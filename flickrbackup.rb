@@ -131,15 +131,17 @@ PersistedIDsHashMany.new("#{dataDirName}/photos-in-album-ids-map.txt") do |photo
 photosAS = %[
 on run argv
   set text item delimiters to ASCII character 0
-  tell application "iPhoto" to set snaps to {id, image path} of photos in photo library album
+  with timeout of (30 * 60) seconds
+    tell application "iPhoto" to set snaps to {id, image path} of photos in photo library album
   
-  set ids     to first item of snaps
-  set idsFile to first item of argv
-  writeUnicodeToPOSIXFile(idsFile, ids as Unicode text)
+    set ids     to first item of snaps
+    set idsFile to first item of argv
+    writeUnicodeToPOSIXFile(idsFile, ids as Unicode text)
   
-  set paths     to second item of snaps
-  set pathsFile to second item of argv
-  writeUnicodeToPOSIXFile(pathsFile, paths as Unicode text)
+    set paths     to second item of snaps
+    set pathsFile to second item of argv
+    writeUnicodeToPOSIXFile(pathsFile, paths as Unicode text)
+  end timeout
 end run
 
 on writeUnicodeToPOSIXFile(fileName, contents)
@@ -173,30 +175,31 @@ on run argv
 
   set albumsFile to first item of argv
   set fp to open for access (POSIX file albumsFile) with write permission
+  with timeout of (30 * 60) seconds
+    tell application "iPhoto"
+      repeat with anAlbum in albums
+        if anAlbum's type is folder album then
+          set albumName to anAlbum's name
+          if albumName is not "Last Import" then
+            set albumPhotoIds to (id of every photo of anAlbum) as Unicode text
+            if length of albumPhotoIds is greater than 0 then
+              set currentAlbum to anAlbum
+              repeat while currentAlbum's parent exists
+                set currentAlbum to currentAlbum's parent
+                set albumName to currentAlbum's name & " > " & albumName
+              end repeat
+              set albumId to anAlbum's id
 
-  tell application "iPhoto"
-    repeat with anAlbum in albums
-      if anAlbum's type is regular album then
-        set albumName to anAlbum's name
-        if albumName is not "Last Import" then
-          set albumPhotoIds to (id of every photo of anAlbum) as Unicode text
-          if length of albumPhotoIds is greater than 0 then
-            set currentAlbum to anAlbum
-            repeat while currentAlbum's parent exists
-              set currentAlbum to currentAlbum's parent
-              set albumName to currentAlbum's name & " > " & albumName
-            end repeat
-            set albumId to anAlbum's id
-
-            set albumData to {"", albumId, albumName, ""} as Unicode text
-            write albumData to fp as Unicode text
-            write albumPhotoIds to fp as Unicode text
-            write nul to fp as Unicode text
+              set albumData to {"", albumId, albumName, ""} as Unicode text
+              write albumData to fp as Unicode text
+              write albumPhotoIds to fp as Unicode text
+              write nul to fp as Unicode text
+            end if
           end if
         end if
-      end if
-    end repeat
-  end tell
+      end repeat
+    end tell
+  end timeout
 
   close access fp
 end run
@@ -221,6 +224,8 @@ loop do
   end
 end
 
+#/// REMOVE!
+exit
 
 # upload new files
 

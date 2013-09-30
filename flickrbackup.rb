@@ -128,33 +128,16 @@ PersistedIDsHashMany.new("#{dataDirName}/photos-in-album-ids-map.txt") do |photo
 
 # get all iPhoto IDs and paths, and filter out those already backed up
 
-photosAS = %[
-on run argv
-  set text item delimiters to ASCII character 0
-  with timeout of (30 * 60) seconds
-    tell application "iPhoto" to set snaps to {id, image path} of photos in photo library album
-  
-    set ids     to first item of snaps
-    set idsFile to first item of argv
-    writeUnicodeToPOSIXFile(idsFile, ids as Unicode text)
-  
-    set paths     to second item of snaps
-    set pathsFile to second item of argv
-    writeUnicodeToPOSIXFile(pathsFile, paths as Unicode text)
-  end timeout
-end run
-
-on writeUnicodeToPOSIXFile(fileName, contents)
-  set fp to open for access (POSIX file fileName) with write permission
-  write contents to fp as Unicode text
-  close access fp
-end writeToFile
-]
-
 idsFile   = Tempfile.new 'ids'
 pathsFile = Tempfile.new 'paths'
-[idsFile, pathsFile].each { |f| f.close }
-applescript(photosAS, idsFile.path, pathsFile.path)
+albumsFile = Tempfile.new 'albums'
+
+[idsFile, pathsFile, albumsFile].each { |f| f.close }
+
+#TODO Path to Photo library (using apple script?)
+
+IO.popen(['python', 'writeidsandpathes.py','--albums-file', albumsFile.path, '--ids-file', idsFile.path, '--pathes-file', pathsFile.path, '--iphoto', '~/Pictures/Fotobibliothek'], 'w') { |io| io.write("") }
+
 allIDs   = loadOutputFile(idsFile).map { |id| id.to_f.to_i.to_s }
 allPaths = loadOutputFile(pathsFile)
 [idsFile, pathsFile].each { |f| f.unlink }
@@ -165,49 +148,6 @@ newPhotoData = allPhotoData.reject { |photoData| uploadedPhotos.get photoData.fi
 puts "\n#{allPhotoData.length} photos in iPhoto library"
 puts "#{newPhotoData.length} photos not yet uploaded to Flickr\n"
 
-
-# get all iPhoto albums and associated photo IDs
-
-albumsAS = %[
-on run argv
-  set text item delimiters to ASCII character 0
-  set nul to {"", ""} as Unicode text
-
-  set albumsFile to first item of argv
-  set fp to open for access (POSIX file albumsFile) with write permission
-  with timeout of (30 * 60) seconds
-    tell application "iPhoto"
-      repeat with anAlbum in albums
-        if anAlbum's type is folder album then
-          set albumName to anAlbum's name
-          if albumName is not "Last Import" then
-            set albumPhotoIds to (id of every photo of anAlbum) as Unicode text
-            if length of albumPhotoIds is greater than 0 then
-              set currentAlbum to anAlbum
-              repeat while currentAlbum's parent exists
-                set currentAlbum to currentAlbum's parent
-                set albumName to currentAlbum's name & " > " & albumName
-              end repeat
-              set albumId to anAlbum's id
-
-              set albumData to {"", albumId, albumName, ""} as Unicode text
-              write albumData to fp as Unicode text
-              write albumPhotoIds to fp as Unicode text
-              write nul to fp as Unicode text
-            end if
-          end if
-        end if
-      end repeat
-    end tell
-  end timeout
-
-  close access fp
-end run
-]
-
-albumsFile = Tempfile.new 'albums'
-albumsFile.close
-applescript(albumsAS, albumsFile.path)
 rawAlbumData = loadOutputFile(albumsFile)
 albumsFile.unlink
 
@@ -224,15 +164,14 @@ loop do
   end
 end
 
-#/// REMOVE!
-exit
 
 # upload new files
 
 newPhotoData.each_with_index do |photoData, i|
   iPhotoID, photoPath = photoData
-  
+  tries = 0
   begin
+    tries += 1
     print "#{i + 1}. Uploading '#{photoPath}' ... "
     flickrID = rateLimit { flickr.upload_photo photoPath }
     raise 'Invalid Flickr ID returned' unless flickrID.is_a? String  # this can happen, but I'm not yet sure what it means
@@ -245,7 +184,8 @@ newPhotoData.each_with_index do |photoData, i|
   # keep trying in face of network errors: Timeout::Error, Errno::BROKEN_PIPE, SocketError, ...
   rescue => err  
     print "#{err.message}: retrying in 10s "; 10.times { sleep 1; print '.' }; puts
-    retry
+    retry if tries <= 3 # try 4 times; give up in case of format error, ...
+    puts "giving up"
   end
 
 end

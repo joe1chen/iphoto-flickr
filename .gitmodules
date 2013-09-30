@@ -1,0 +1,3 @@
+[submodule "phoshare"]
+	path = phoshare
+	url = https://github.com/flubba/phoshare

@@ -227,6 +227,8 @@ end
 newPhotoData.each_with_index do |photoData, i|
   iPhotoID, photoPath = photoData
   
+  tries = 0
+  
   begin
     print "#{i + 1}. Uploading '#{photoPath}' ... "
     flickrID = rateLimit { flickr.upload_photo photoPath }
@@ -239,8 +241,30 @@ newPhotoData.each_with_index do |photoData, i|
 
   # keep trying in face of network errors: Timeout::Error, Errno::BROKEN_PIPE, SocketError, ...
   rescue => err  
-    print "#{err.message}: retrying in 10s "; 10.times { sleep 1; print '.' }; puts
-    retry
+    tries += 1
+    
+    if (tries <= 3)
+      if ((err.is_a? FlickRaw::FailedResponse) && 
+        !(err.code == 3 || err.code == 6 || err.code == 105 || err.code == 106))
+        
+        # These error codes will possibly be recoverable, do not retry for others
+        # 3: General upload failure
+        # 6: User exceeded upload limit
+        # 105: Service currently unavailable
+        # 106: Write operation failed
+        if 
+          #non recoverable error
+          puts "#{err.message} (#{err.code}) - Not recoverable, skipping image."
+        end
+      else
+        #Possibly recoverable error code
+        print "#{err.message}: retrying in 10s "; 10.times { sleep 1; print '.' }; puts
+        retry
+      end
+    else
+      # Too many failures
+      puts "Too many failures, skipping"
+    end
   end
 
 end

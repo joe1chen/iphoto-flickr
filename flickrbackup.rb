@@ -171,7 +171,8 @@ class ErrTooBig < RuntimeError; def to_s; 'File is too big'; end; end
 
 newPhotoData.each_with_index do |photoData, i|
   iPhotoID, photoPath = photoData
-
+  unsupported = %w(.bmp .AVI .MOV)
+  if !photoPath.end_with? *unsupported 
   tries = 0
   begin
     tries += 1
@@ -190,6 +191,7 @@ newPhotoData.each_with_index do |photoData, i|
     print "#{err.message}: retrying in 10s "; 10.times { sleep 1; print '.' }; puts
     retry if tries <= 3 # try 4 times; give up in case of format error, ...
     puts "giving up"
+  end
   end
 
 end

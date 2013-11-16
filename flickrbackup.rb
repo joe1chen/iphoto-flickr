@@ -169,51 +169,52 @@ end
 MAX_SIZE = 1024 ** 3
 class ErrTooBig < RuntimeError; def to_s; 'File is too big'; end; end
 
-newPhotoData.each_with_index do |photoData, i|
-  iPhotoID, photoPath = photoData
-  unsupported = %w(.bmp .AVI .MOV)
-  if !photoPath.end_with? *unsupported 
-  tries = 0
-  begin
-    tries += 1
-    print "#{i + 1}. Uploading '#{photoPath}' ... "
-    raise ErrTooBig if File.size(photoPath) > MAX_SIZE
-    flickrID = rateLimit { flickr.upload_photo photoPath }
-    raise 'Invalid Flickr ID returned' unless flickrID.is_a? String  # this can happen, but I'm not yet sure what it means
-    puts uploadedPhotos.add iPhotoID, flickrID
-  
-  rescue ErrTooBig, Errno::ENOENT, Errno::EINVAL => e  # in the face of missing/large/weird files, don't retry
-    puts e
-    puts
+  newPhotoData.each_with_index do |photoData, i|
+    iPhotoID, photoPath = photoData
+    unsupported = %w(.bmp .AVI .MOV)
+    if !photoPath.end_with? *unsupported
+      tries = 0
+      begin
+        tries += 1
+        print "#{i + 1}. Uploading '#{photoPath}' ... "
+        raise ErrTooBig if File.size(photoPath) > MAX_SIZE
+        flickrID = rateLimit { flickr.upload_photo photoPath }
+        raise 'Invalid Flickr ID returned' unless flickrID.is_a? String  # this can happen, but I'm not yet sure what it means
+        puts uploadedPhotos.add iPhotoID, flickrID
 
-  # keep trying in face of network errors: Timeout::Error, Errno::BROKEN_PIPE, SocketError, ...
-  rescue => err
-    
-    if (tries <= 3)
-      if ((err.is_a? FlickRaw::FailedResponse) && 
-        !(err.code == 3 || err.code == 6 || err.code == 105 || err.code == 106))
-        
-        # These error codes will possibly be recoverable, do not retry for others
-        # 3: General upload failure
-        # 6: User exceeded upload limit
-        # 105: Service currently unavailable
-        # 106: Write operation failed
-        if 
-          #non recoverable error
-          puts "#{err.message} (#{err.code}) - Not recoverable, skipping image."
+      rescue ErrTooBig, Errno::ENOENT, Errno::EINVAL => e  # in the face of missing/large/weird files, don't retry
+        puts e
+        puts
+
+          # keep trying in face of network errors: Timeout::Error, Errno::BROKEN_PIPE, SocketError, ...
+      rescue => err
+
+        if (tries <= 3)
+          if ((err.is_a? FlickRaw::FailedResponse) &&
+              !(err.code == 3 || err.code == 6 || err.code == 105 || err.code == 106))
+
+            # These error codes will possibly be recoverable, do not retry for others
+            # 3: General upload failure
+            # 6: User exceeded upload limit
+            # 105: Service currently unavailable
+            # 106: Write operation failed
+            if
+              #non recoverable error
+            puts "#{err.message} (#{err.code}) - Not recoverable, skipping image."
+            end
+          else
+            #Possibly recoverable error code
+            print "#{err.message}: retrying in 10s "; 10.times { sleep 1; print '.' }; puts
+            retry
+          end
+        else
+          # Too many failures
+          puts "Too many failures, skipping"
         end
-      else
-        #Possibly recoverable error code
-        print "#{err.message}: retrying in 10s "; 10.times { sleep 1; print '.' }; puts
-        retry
       end
-    else
-      # Too many failures
-      puts "Too many failures, skipping"
+
     end
   end
-
-end
 
 
 # update albums/photosets

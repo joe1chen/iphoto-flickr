@@ -229,8 +229,8 @@ class ErrTooBig < RuntimeError; def to_s; 'File is too big'; end; end
 newPhotoData.each_with_index do |photoData, i|
   iPhotoID, photoPath = photoData
 
-  unsupported = %w(.bmp .AVI .MOV)
-  if !photoPath.end_with? *unsupported
+  unsupported = %w(.bmp .avi .mov .mp4 .3gp)
+  if !photoPath.downcase.end_with? *unsupported
     tries = 0
     begin
       tries += 1
